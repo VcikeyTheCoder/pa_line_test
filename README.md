@@ -4,6 +4,8 @@ Push / pull PA line test from your Orca 3mf. No slicer, no upload, no excuses.
 
 **Use it here: https://vcikeythecoder.github.io/pa_line_test/**
 
+Repo: https://github.com/VcikeyTheCoder/pa_line_test
+
 ![Screenshot](docs/screenshot.png)
 
 Each bar prints slow, fast, slow at one PA value. Read the left end (speeding up)
@@ -48,7 +50,8 @@ Made and maintained by ONBOX_CREATIONS. Issues and pull requests are welcome.
 
 ## Credits
 
-Line test idea from auto PA ([piro-air-pa-calibrator](https://github.com/VcikeyTheCoder/piro-air-pa-calibrator)).
+- Line test idea from auto PA ([piro-air-pa-calibrator](https://github.com/VcikeyTheCoder/piro-air-pa-calibrator))
+- Made for [dual_pa](https://github.com/VcikeyTheCoder/dual_pa), two PA values for Klipper and Kalico
 
 ## License
 
