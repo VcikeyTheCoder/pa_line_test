@@ -1,8 +1,21 @@
 // Builds the push / pull line test G-code
 import { fill } from './macro.js';
 
-export const LAYERS = 4;            // rim, tabs and bars: layers 1-3, numbers: layer 4
 const WALLS = 3;
+
+// Layers: base under the bars, then the PA test layers, then one layer of numbers.
+// Rim and tabs are as tall as base + test layers.
+export function layers(v) {
+  const base = Math.max(0, Math.round(v.base_layers ?? 1));
+  const test = Math.max(1, Math.round(v.test_layers ?? 2));
+  return { base, test, body: base + test, total: base + test + 1 };
+}
+
+// Offsets of the lines of one bar from its center line
+function barLines(v) {
+  const n = Math.max(1, Math.round(v.lines_per_bar ?? 3));
+  return Array.from({ length: n }, (_, k) => (k - (n - 1) / 2) * v.line_width);
+}
 const DIGIT_H = 3.2, DIGIT_W = 1.8, DIGIT_GAP = 0.75;
 
 // Corners of a digit: x 0..1, y 0..1
@@ -44,17 +57,20 @@ function textWidth(t) {
 
 // Sizes of the test in its own coordinates (bars from x 0 to bar length)
 export function layout(v) {
-  const W = v.line_width, ks = paValues(v);
-  const pitch = Math.max(5, 3 * W + 2.5);
-  const rim = WALLS * W;
+  // W: test bars, R: rim, tabs and numbers (outer wall width)
+  const W = v.line_width, R = v.wall_width, ks = paValues(v);
+  const n = Math.max(1, Math.round(v.lines_per_bar ?? 3));
+  const pitch = Math.max(5, n * W + 2.5);
+  const barH = n * W;
+  const rim = WALLS * R;
   const labels = ks.map((k) => k.toFixed(decimals(v)));
   const numW = Math.max(0, ...labels.map(textWidth));
   const tabW = numW + 4 + rim;
   const ix0 = 0, ix1 = v.line_length;
-  const iy0 = -4, iy1 = Math.max(0, ks.length - 1) * pitch + 4;
+  const iy0 = -(barH / 2 + 3.3), iy1 = Math.max(0, ks.length - 1) * pitch + barH / 2 + 3.3;
   const ox0 = ix0 - rim, oy0 = iy0 - rim, ox1 = ix1 + rim, oy1 = iy1 + rim;
   return {
-    W, ks, labels, pitch, rim, tabW, numW,
+    W, R, ks, labels, pitch, rim, tabW, numW,
     ix0, ix1, iy0, iy1, ox0, oy0, ox1, oy1,
     x0: ox0 - tabW, x1: ox1 + tabW, y0: oy0, y1: oy1,
   };
@@ -73,9 +89,12 @@ export function lineArea(w, h) { return (w - h * (1 - Math.PI / 4)) * h; }
 // Speeds and accelerations actually used
 export function derived(v) {
   const area = lineArea(v.line_width, v.layer_height);
+  // fast speed gives the same flow as the outer wall at its own width and speed
+  const wallFlow = v.fast_speed * lineArea(v.wall_width, v.layer_height);
+  const matched = wallFlow / area;
   const flowCap = v.max_flow > 0 ? v.max_flow / area : Infinity;
   const speedCap = Math.min(flowCap, v.max_speed > 0 ? v.max_speed : Infinity);
-  const fast = Math.min(v.fast_speed, speedCap);
+  const fast = Math.min(matched, speedCap);
   const accelCap = v.max_accel > 0 ? v.max_accel : Infinity;
   const accel = Math.min(v.test_accel, accelCap);
   const slow = Math.min(v.slow_speed, speedCap);
@@ -85,9 +104,9 @@ export function derived(v) {
   const reached = 2 * rampDist <= fastLen;
   const peak = reached ? fast : Math.sqrt(slow * slow + accel * Math.max(0, fastLen));
   return {
-    area, flowCap, fast, slow, accel, rampDist, fastLen, reached, peak,
-    fastFlow: fast * area, wantedFlow: v.fast_speed * area,
-    fastCapped: fast < v.fast_speed, accelCapped: accel < v.test_accel,
+    area, flowCap, fast, slow, accel, rampDist, fastLen, reached, peak, matched, wallFlow,
+    fastFlow: fast * area, wantedFlow: wallFlow,
+    fastCapped: fast < matched - 1e-9, accelCapped: accel < v.test_accel,
   };
 }
 
@@ -117,7 +136,7 @@ export function makeVars(v, cfgVars, place) {
     initial_tool: 0, initial_extruder: 0, current_extruder: 0, next_extruder: 0, previous_extruder: -1,
     current_object_idx: 0, total_toolchanges: 0, has_wipe_tower: false,
     layer_num: 0, layer_z: v.first_layer_height,
-    total_layer_count: LAYERS, max_layer_z: v.first_layer_height + (LAYERS - 1) * v.layer_height,
+    total_layer_count: layers(v).total, max_layer_z: v.first_layer_height + (layers(v).total - 1) * v.layer_height,
     first_layer_print_min: place.min, first_layer_print_max: place.max,
     first_layer_print_size: [place.max[0] - place.min[0], place.max[1] - place.min[1]],
     adaptive_bed_mesh_min: place.min, adaptive_bed_mesh_max: place.max,
@@ -149,6 +168,7 @@ class Writer {
   }
   out(s) { this.lines.push(s); }
   setType(t) { if (t !== this.type) { this.out(';TYPE:' + t); this.type = t; } }
+  setWidth(x) { if (x !== this.width) { this.out(';WIDTH:' + f3(x)); this.width = x; } }
   setAccel(a) {
     a = Math.round(Math.min(a, this.v.max_accel > 0 ? this.v.max_accel : a));
     if (a !== this.accel) { this.out('SET_VELOCITY_LIMIT ACCEL=' + a); this.accel = a; }
@@ -184,7 +204,7 @@ class Writer {
     this.x = x; this.y = y;
   }
   extrude(x, y, speed, h) {
-    const v = this.v, w = v.line_width;
+    const v = this.v, w = this.width;
     const d = Math.hypot(x - this.x, y - this.y);
     if (d < 1e-4) return;
     this.unretract();
@@ -225,7 +245,7 @@ function fill45(x0, y0, x1, y1, W, sgn) {
 
 export function generate(v, cfgVars) {
   const place = placement(v), L = place.L, D = derived(v);
-  const W = v.line_width, dx = place.dx, dy = place.dy;
+  const W = v.line_width, R = v.wall_width, dx = place.dx, dy = place.dy;
   const at = (x, y) => [x + dx, y + dy];
   const w = new Writer(v);
   const vars = makeVars(v, cfgVars, place);
@@ -261,14 +281,18 @@ export function generate(v, cfgVars) {
   w.out('G90');
   w.out('M83');
   w.out('G92 E0');
-  w.out(`SET_PRINT_STATS_INFO TOTAL_LAYER=${LAYERS}`);
+  const LY = layers(v);
+  w.out(`SET_PRINT_STATS_INFO TOTAL_LAYER=${LY.total}`);
   w.out(`SET_PRESSURE_ADVANCE ADVANCE=${v.base_pa}`);
   w.out('M107');
 
   const tabs = [[L.ox0 - L.tabW, L.ox0, true], [L.ox1, L.ox1 + L.tabW, false]];
-  const ov = L.rim - (v.overlap / 100) * W;
+  const ov = L.rim - (v.overlap / 100) * R;
   let z = 0;
-  for (let layer = 1; layer <= LAYERS; layer++) {
+  const offs = barLines(v);
+  const ext = (v.bar_overlap / 100) * W;            // bars run this far into the rim
+  const bx0 = L.ix0 - ext, bx1 = L.ix1 + ext;
+  for (let layer = 1; layer <= LY.total; layer++) {
     const first = layer === 1;
     const h = first ? v.first_layer_height : v.layer_height;
     z = first ? v.first_layer_height : z + v.layer_height;
@@ -288,11 +312,12 @@ export function generate(v, cfgVars) {
     w.setAccel(first ? v.first_layer_accel : v.print_accel);
     if (v.label_object) w.out(`EXCLUDE_OBJECT_START NAME=${OBJ}`);
 
-    if (layer <= 3) {
-      const wallSpeed = first ? v.first_layer_speed : v.wall_speed;
+    if (layer <= LY.body) {
+      w.setWidth(R);
+    const wallSpeed = first ? v.first_layer_speed : v.wall_speed;
       // rim around the bars, inner wall first
       for (let j = WALLS - 1; j >= 0; j--) {
-        const o = W / 2 + j * W;
+        const o = R / 2 + j * R;
         const a = L.ox0 + o, b = L.oy0 + o, c = L.ox1 - o, d = L.oy1 - o;
         w.setType(j ? 'Inner wall' : 'Outer wall');
         w.path([at(a, b), at(c, b), at(c, d), at(a, d), at(a, b)], wallSpeed, h);
@@ -301,46 +326,49 @@ export function generate(v, cfgVars) {
       for (const [tx0, tx1, left] of tabs) {
         const xOut = left ? tx0 : tx1, xOpen = left ? tx1 : tx0, s = left ? 1 : -1;
         for (let j = WALLS - 1; j >= 0; j--) {
-          const o = W / 2 + j * W, xo = xOut + s * o, ya = L.oy0 + o, yb = L.oy1 - o;
+          const o = R / 2 + j * R, xo = xOut + s * o, ya = L.oy0 + o, yb = L.oy1 - o;
           w.setType(j ? 'Inner wall' : 'Outer wall');
           w.path([at(xOpen, ya), at(xo, ya), at(xo, yb), at(xOpen, yb)], wallSpeed, h);
         }
-        const role = layer === 1 ? ['Bottom surface', 1, v.first_layer_speed]
-          : layer === 2 ? ['Internal solid infill', -1, v.solid_speed] : ['Top surface', 1, v.top_speed];
-        const fx0 = left ? tx0 + ov : tx0 - (v.overlap / 100) * W;
-        const fx1 = left ? tx1 + (v.overlap / 100) * W : tx1 - ov;
+        const sgn = layer % 2 ? 1 : -1;
+        const role = layer === 1 ? ['Bottom surface', sgn, v.first_layer_speed]
+          : layer === LY.body ? ['Top surface', sgn, v.top_speed] : ['Internal solid infill', sgn, v.solid_speed];
+        const fx0 = left ? tx0 + ov : tx0 - (v.overlap / 100) * R;
+        const fx1 = left ? tx1 + (v.overlap / 100) * R : tx1 - ov;
         w.setType(role[0]);
-        for (const [p, q] of fill45(fx0, L.oy0 + ov, fx1, L.oy1 - ov, W, role[1])) w.path([at(...p), at(...q)], role[2], h);
+        for (const [p, q] of fill45(fx0, L.oy0 + ov, fx1, L.oy1 - ov, R, role[1])) w.path([at(...p), at(...q)], role[2], h);
       }
       // bars
-      if (layer < 3) {
+      if (layer <= LY.base) {
+        w.setWidth(W);
         w.setType(first ? 'Bottom surface' : 'Internal solid infill');
         const sp = first ? v.first_layer_speed : v.solid_speed;
         let flip = false;
         L.ks.forEach((k, i) => {
-          for (const j of [-1, 0, 1]) {
-            const y = i * L.pitch + j * W;
-            const xs = flip ? [L.ix1, L.ix0] : [L.ix0, L.ix1];
+          for (const j of offs) {
+            const y = i * L.pitch + j;
+            const xs = flip ? [bx1, bx0] : [bx0, bx1];
             w.path([at(xs[0], y), at(xs[1], y)], sp, h);
             flip = !flip;
           }
         });
       } else {
         // the test: every line left to right, slow / fast / slow
+        w.setWidth(W);
         w.setAccel(D.accel);
         const s1 = L.ix0 + v.slow_length, s2 = L.ix1 - v.slow_length;
         L.ks.forEach((k, i) => {
           w.out(`; bar ${i + 1}: PA ${k}`);
           w.out(`SET_PRESSURE_ADVANCE ADVANCE=${k}`);
-          for (const j of [-1, 0, 1]) {
-            const y = i * L.pitch + j * W;
+          for (const j of offs) {
+            const y = i * L.pitch + j;
             w.setType('Test slow');
-            w.travel(...at(L.ix0, y));
+            w.travel(...at(bx0, y));
             w.extrude(...at(s1, y), D.slow, h);
             w.setType('Test fast');
             w.extrude(...at(s2, y), D.fast, h);
             w.setType('Test slow');
-            w.extrude(...at(L.ix1, y), D.slow, h);
+            w.extrude(...at(bx1, y), D.slow, h);
           }
         });
         w.out(`SET_PRESSURE_ADVANCE ADVANCE=${v.base_pa}`);
@@ -348,6 +376,7 @@ export function generate(v, cfgVars) {
       }
     } else {
       // numbers on top of both tabs
+      w.setWidth(R);
       w.setType('Numbers');
       for (const [tx0, tx1, left] of tabs) {
         const xStart = left ? tx0 + L.rim + 2 : tx0 + 2;

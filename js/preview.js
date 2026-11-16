@@ -13,10 +13,10 @@ export const COLORS = {
   'Numbers': ['#f2f2f2', 'Numbers'],
 };
 
-// Extrusion moves from G-code: [x0, y0, x1, y1, z, h, layer, type]
+// Extrusion moves from G-code: [x0, y0, x1, y1, z, h, layer, type, width]
 export function parseGcode(text) {
   const segs = [];
-  let x = 0, y = 0, z = 0, h = 0.2, layer = 0, type = '', rel = false;
+  let x = 0, y = 0, z = 0, h = 0.2, w = 0.45, layer = 0, type = '', rel = false;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!line) continue;
@@ -24,6 +24,7 @@ export function parseGcode(text) {
       if (line.startsWith(';TYPE:')) type = line.slice(6);
       else if (line === ';LAYER_CHANGE') layer++;
       else if (line.startsWith(';HEIGHT:')) h = parseFloat(line.slice(8)) || h;
+      else if (line.startsWith(';WIDTH:')) w = parseFloat(line.slice(7)) || w;
       continue;
     }
     const code = line.split(';')[0].trim();
@@ -35,7 +36,7 @@ export function parseGcode(text) {
       const v = parseFloat(w.slice(1));
       if (w[0] === 'X') nx = v; else if (w[0] === 'Y') ny = v; else if (w[0] === 'Z') z = v; else if (w[0] === 'E') e = v;
     }
-    if (e !== null && rel && e > 0 && (nx !== x || ny !== y)) segs.push([x, y, nx, ny, z, h, layer, type]);
+    if (e !== null && rel && e > 0 && (nx !== x || ny !== y)) segs.push([x, y, nx, ny, z, h, layer, type, w]);
     x = nx; y = ny;
   }
   return segs;
@@ -93,16 +94,14 @@ export class Preview {
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     this.bedGroup.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: this.dark ? 0x353a40 : 0xc6cbd1 })));
   }
-  setGcode(text, width) {
+  setGcode(text) {
     this.segs = parseGcode(text);
-    this.width = width;
     this.build();
   }
   build() {
     this.group.clear();
     const segs = this.segs.filter((s) => s[6] <= this.maxLayer);
     if (!segs.length) { this.render(); return; }
-    const W = this.width;
     const body = new THREE.CylinderGeometry(0.5, 0.5, 1, 10, 1); body.rotateZ(Math.PI / 2);
     const cap = new THREE.SphereGeometry(0.5, 10, 6);
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0 });
@@ -110,7 +109,7 @@ export class Preview {
     const bodies = new THREE.InstancedMesh(body, mat, n), ends = new THREE.InstancedMesh(cap, mat, n);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
     const zAxis = new THREE.Vector3(0, 0, 1);
-    segs.forEach(([x0, y0, x1, y1, z, h, , type], i) => {
+    segs.forEach(([x0, y0, x1, y1, z, h, , type, W], i) => {
       const len = Math.hypot(x1 - x0, y1 - y0), ang = Math.atan2(y1 - y0, x1 - x0), zc = z - h / 2;
       q.setFromAxisAngle(zAxis, ang);
       m.compose(p.set((x0 + x1) / 2, (y0 + y1) / 2, zc), q, s.set(len, W, h));

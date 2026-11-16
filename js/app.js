@@ -1,6 +1,6 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { FIELDS, GROUPS, defaults, fromConfig, readProjectConfig, readGcodeConfig, configVars, profileNames } from './settings.js';
-import { generate, derived, LAYERS } from './generate.js';
+import { generate, derived, layers } from './generate.js';
 import { check } from './checks.js';
 import { Preview, COLORS } from './preview.js';
 
@@ -160,13 +160,20 @@ function run() {
     ['Filament', `${(gen.stats.filament / 1000).toFixed(2)} m`],
     ['Time', `about ${Math.max(1, Math.round(gen.stats.time / 60))} min`],
   ].map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
+  // layer slider follows the layer count, stays at the top when it was there
+  const total = layers(v).total, sl = $('layer');
+  const atTop = +sl.value >= +sl.max;
+  sl.max = total;
+  if (atTop || +sl.value > total) sl.value = total;
+  $('layerOut').textContent = `${sl.value} / ${total}`;
   showPreview(gen, v);
+  if (preview) preview.setLayer(+sl.value);
 }
 
 function showDerived(v) {
   const d = derived(v), el = $('derived');
   if (!el) return;
-  el.innerHTML = `Fast speed: <b>${+d.fast.toFixed(1)} mm/s</b> (${+d.fastFlow.toFixed(1)} mm³/s${d.fastCapped ? ', limited' : ''})<br>` +
+  el.innerHTML = `Fast speed: <b>${+d.fast.toFixed(1)} mm/s</b> at ${v.line_width} mm (${+d.fastFlow.toFixed(1)} mm³/s${d.fastCapped ? ', limited' : ', same flow as outer wall'})<br>` +
     `Acceleration: <b>${Math.round(d.accel)} mm/s²</b>${d.accelCapped ? ' (limited)' : ''}<br>Acceleration distance: ${+d.rampDist.toFixed(1)} mm`;
 }
 
@@ -185,7 +192,7 @@ function showPreview(gen, v) {
   }
   $('empty').hidden = true;
   preview.setBed({ x0: v.bed_x0, y0: v.bed_y0, x1: v.bed_x1, y1: v.bed_y1 });
-  preview.setGcode(gen.gcode, v.line_width);
+  preview.setGcode(gen.gcode);
   const p = gen.place;
   const box = { min: p.min, max: p.max,
     pushX: p.L.ix0 + p.dx + v.slow_length, pullX: p.L.ix1 + p.dx - v.slow_length };
@@ -239,9 +246,8 @@ function init() {
     fillForm(); run();
   });
   $('download').addEventListener('click', download);
-  $('layer').max = LAYERS; $('layer').value = LAYERS;
   $('layer').addEventListener('input', (e) => {
-    $('layerOut').textContent = `${e.target.value} / ${LAYERS}`;
+    $('layerOut').textContent = `${e.target.value} / ${e.target.max}`;
     if (preview) preview.setLayer(+e.target.value);
   });
   document.querySelectorAll('.views button').forEach((b) => b.addEventListener('click', () => {

@@ -17,7 +17,9 @@ t('3mf settings', () => {
   const { values: v, source } = fromConfig(project);
   assert.equal(v.fast_speed, 120); assert.equal(v.test_accel, 3000);
   assert.equal(v.flow_ratio, 0.94); assert.equal(v.max_flow, 11);
-  assert.equal(v.line_width, 0.42);            // 105% of 0.4
+  assert.equal(v.wall_width, 0.42);            // 105% of 0.4
+  assert.equal(v.line_width, 0.6);             // test width is never read from the file
+  assert.equal(source.line_width, 'default');
   assert.equal(v.bed_temp_first, 65);           // Textured PEI Plate
   assert.equal(v.bed_x1, 250); assert.equal(v.center_x, 125);
   assert.equal(v.max_accel, 8000);
@@ -27,7 +29,7 @@ t('3mf settings', () => {
 
 t('G-code settings match the 3mf', () => {
   const a = fromConfig(project).values, b = fromConfig(tail).values;
-  for (const k of ['fast_speed', 'test_accel', 'flow_ratio', 'max_flow', 'line_width', 'bed_temp_first', 'bed_x1', 'retract_length', 'nozzle_temp_first'])
+  for (const k of ['fast_speed', 'test_accel', 'flow_ratio', 'max_flow', 'wall_width', 'line_width', 'bed_temp_first', 'bed_x1', 'retract_length', 'nozzle_temp_first'])
     assert.equal(b[k], a[k], k);
   assert.equal(b.start_gcode, a.start_gcode);
 });
@@ -59,14 +61,15 @@ t('generated G-code', () => {
   const v = defaults().values;
   const r = generate(v, null);
   const g = r.gcode;
-  assert.equal((g.match(/^SET_PRESSURE_ADVANCE ADVANCE=/gm) || []).length, 17 + 2);
+  assert.equal((g.match(/^SET_PRESSURE_ADVANCE ADVANCE=/gm) || []).length, 1 + 2 * (17 + 1));   // base, 2 test layers
   assert.equal((g.match(/^;LAYER_CHANGE/gm) || []).length, 4);
   assert.match(g, /^M190 S60$/m); assert.match(g, /^M109 S215$/m);
   // stays on the bed, extrusion matches the line size, flow under the limit
   const filArea = Math.PI * (v.filament_diameter / 2) ** 2;
-  let x = 0, y = 0, z = 0, h = v.first_layer_height;
+  let x = 0, y = 0, z = 0, h = v.first_layer_height, lw = v.wall_width;
   for (const line of g.split('\n')) {
     if (line.startsWith(';HEIGHT:')) h = +line.slice(8);
+    if (line.startsWith(';WIDTH:')) lw = +line.slice(7);
     const m = /^G1 (.*)/.exec(line);
     if (!m) continue;
     const w = Object.fromEntries(m[1].split(' ').map((p) => [p[0], +p.slice(1)]));
@@ -74,9 +77,9 @@ t('generated G-code', () => {
     if (w.Z !== undefined) z = w.Z;
     if (w.E > 0 && (nx !== x || ny !== y)) {
       const d = Math.hypot(nx - x, ny - y);
-      const want = d * lineArea(v.line_width, h) / filArea * v.flow_ratio;
+      const want = d * lineArea(lw, h) / filArea * v.flow_ratio;
       assert.ok(Math.abs(w.E - want) < 1e-4, 'E per mm');
-      assert.ok(w.F / 60 * lineArea(v.line_width, h) <= v.max_flow + 1e-6, 'flow');
+      assert.ok(w.F / 60 * lineArea(lw, h) <= v.max_flow + 1e-6, 'flow');
       assert.ok(nx >= v.bed_x0 && nx <= v.bed_x1 && ny >= v.bed_y0 && ny <= v.bed_y1, 'on bed');
     }
     x = nx; y = ny;
@@ -94,6 +97,35 @@ t('label object for adaptive bed mesh', () => {
   assert.ok(!/EXCLUDE_OBJECT/.test(generate({ ...v, label_object: false }, null).gcode));
 });
 
+t('lines per bar, layers and rim overlap', () => {
+  const v = { ...defaults().values, lines_per_bar: 5, base_layers: 0, test_layers: 3, bar_overlap: 100, line_width: 0.6 };
+  const r = generate(v, null), g = r.gcode;
+  assert.equal((g.match(/^;LAYER_CHANGE/gm) || []).length, 4);
+  // test starts on layer 1: first SET_PRESSURE_ADVANCE for a bar comes before the second layer change
+  const second = g.indexOf(';LAYER_CHANGE', g.indexOf(';LAYER_CHANGE') + 1);
+  assert.ok(g.indexOf('; bar 1:') < second);
+  // 5 lines per bar on each of 3 test layers
+  assert.equal((g.match(/^;TYPE:Test fast/gm) || []).length, 5 * 17 * 3);
+  // lines start 0.6 mm inside the rim (inner edge is at x = 0 in test coordinates)
+  const L = r.place.L, x0 = L.ix0 + r.place.dx - 0.6;
+  const first = g.slice(g.indexOf('; bar 1:')).match(/G1 X([\d.]+) Y[\d.]+ F\d+\n/);
+  assert.ok(Math.abs(+first[1] - x0) < 1e-3, first[0]);
+  const v2 = { ...defaults().values, base_layers: 2, test_layers: 1 };
+  assert.equal((generate(v2, null).gcode.match(/^;LAYER_CHANGE/gm) || []).length, 4);
+});
+
+t('fast speed matches outer wall flow', () => {
+  const v = { ...defaults().values, fast_speed: 150, wall_width: 0.45, line_width: 0.7, max_flow: 50 };
+  const d = derived(v);
+  assert.ok(Math.abs(d.fast * lineArea(0.7, v.layer_height) - 150 * lineArea(0.45, v.layer_height)) < 1e-9);
+  assert.ok(d.fast < 150 && !d.fastCapped);
+  const g = generate(v, null).gcode;
+  const before = g.slice(0, g.indexOf('; bar 1:'));
+  assert.equal(before.match(/;WIDTH:([\d.]+)/g).at(-1), ';WIDTH:0.7');
+  const bar = g.slice(g.indexOf('; bar 1:'));
+  assert.match(bar, new RegExp(`F${Math.round(d.fast * 60)}\\b`));
+});
+
 t('fast speed is capped by max flow', () => {
   const v = { ...defaults().values, fast_speed: 400, max_flow: 12 };
   const d = derived(v);
@@ -106,7 +138,7 @@ t('checks', () => {
   const has = (v, re) => check(v, generate(v, null)).some((c) => re.test(c.text));
   assert.ok(has({ ...base, center_x: 20 }, /outside the printable area/));
   assert.ok(has({ ...base, flavor: 'marlin' }, /requires Klipper/));
-  assert.ok(has({ ...base, test_accel: 300 }, /Fast speed not reached/));
+  assert.ok(has({ ...base, test_accel: 100 }, /Fast speed not reached/));
   assert.ok(has({ ...base, start_gcode: 'M117 hi' }, /no G28 or start macro/));
   assert.ok(has({ ...base, start_gcode: 'PRINT_START T={unknown_thing}' }, /unknown placeholder: unknown_thing/));
   assert.ok(has({ ...base, filament_type: 'PLA', nozzle_temp_first: 260 }, /outside the typical/));

@@ -27,12 +27,21 @@ export function check(v, gen) {
   if (v.pa_end > 0.2) warn('PA end above 0.2. Typical for bowden extruders only.');
   if (v.pa_start < 0) err('PA must not be negative.');
 
+  // bars and layers
+  const nl = Math.round(v.lines_per_bar);
+  if (!(nl >= 1)) err('Lines per bar must be at least 1.');
+  else if (nl > 10) warn(`${nl} lines per bar. Bars get wide and the print gets slow.`);
+  if (!(Math.round(v.test_layers) >= 1)) err('PA test layers must be at least 1.');
+  if (Math.round(v.base_layers) < 0) err('Base layers must not be negative.');
+  if (Math.round(v.base_layers) === 0) info('No base layers. The PA test starts on the first layer, so first layer squish affects the result.');
+  if (v.bar_overlap < 0 || v.bar_overlap > 200) warn('Bar / rim overlap outside 0–200%.');
+
   // speed and flow
   const D = derived(v);
   if (D.fastCapped) {
     const byFlow = v.max_flow > 0 && D.flowCap <= (v.max_speed > 0 ? v.max_speed : Infinity);
     warn(byFlow
-      ? `Fast speed limited to ${r1(D.fast)} mm/s by max volumetric speed (${v.max_flow} mm³/s).`
+      ? `Fast speed limited to ${r1(D.fast)} mm/s by max volumetric speed (${v.max_flow} mm³/s). Outer wall flow is ${r1(D.wallFlow)} mm³/s.`
       : `Fast speed limited to ${r1(D.fast)} mm/s by max speed.`);
   }
   if (D.fast < D.slow * 2) warn(`Fast speed (${r1(D.fast)} mm/s) is less than twice the slow speed (${r1(D.slow)} mm/s). PA effects may not be visible.`);
@@ -55,9 +64,10 @@ export function check(v, gen) {
 
   // lines and layers
   const n = v.nozzle_diameter;
-  if (v.line_width < n * 0.6 || v.line_width > n * 1.6) warn(`Line width ${v.line_width} mm is outside the usual range for a ${n} mm nozzle.`);
+  if (v.line_width < n * 0.6 || v.line_width > n * 2) warn(`Test line width ${v.line_width} mm is outside 60–200% of the ${n} mm nozzle.`);
+  if (v.wall_width < n * 0.6 || v.wall_width > n * 1.6) warn(`Outer wall line width ${v.wall_width} mm is outside 60–160% of the ${n} mm nozzle.`);
   if (v.layer_height > n * 0.75) warn(`Layer height ${v.layer_height} mm exceeds 75% of the nozzle diameter.`);
-  if (v.layer_height > v.line_width * 0.9) err('Layer height must be less than 90% of the line width.');
+  if (v.layer_height > Math.min(v.line_width, v.wall_width) * 0.9) err('Layer height must be less than 90% of the line width.');
   if (v.first_layer_height < 0.1) warn('First layer height below 0.1 mm.');
   if (v.overlap < 0 || v.overlap > 60) warn('Infill / wall overlap outside 0–60%.');
   if (v.flow_ratio < 0.8 || v.flow_ratio > 1.2) warn(`Flow ratio ${v.flow_ratio} is outside 0.8–1.2.`);
