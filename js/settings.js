@@ -142,6 +142,7 @@ export const FIELDS = [
     read: (c) => bedOf(c) && (bedOf(c).x0 + bedOf(c).x1) / 2 },
   { id: 'center_y', g: 'test', label: 'Center Y', unit: 'mm', def: null, step: 1,
     read: (c) => bedOf(c) && (bedOf(c).y0 + bedOf(c).y1) / 2 },
+  { id: 'label_object', g: 'test', label: 'Label object (adaptive bed mesh)', type: 'bool', def: true },
   // speed and acceleration
   { id: 'fast_speed', g: 'speed', label: 'Fast speed (outer wall)', unit: 'mm/s', def: 150, step: 1,
     read: (c) => plain(num(c, 'outer_wall_speed')) },

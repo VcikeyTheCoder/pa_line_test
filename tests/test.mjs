@@ -84,6 +84,16 @@ t('generated G-code', () => {
   assert.ok(r.stats.filament > 100);
 });
 
+t('label object for adaptive bed mesh', () => {
+  const v = defaults().values;
+  const g = generate(v, null).gcode;
+  assert.equal((g.match(/^EXCLUDE_OBJECT_DEFINE NAME=pa_line_test CENTER=[\d.]+,[\d.]+ POLYGON=\[\[/gm) || []).length, 1);
+  assert.ok(g.indexOf('EXCLUDE_OBJECT_DEFINE') < g.indexOf('; start G-code'), 'defined before the start G-code');
+  assert.equal((g.match(/^EXCLUDE_OBJECT_START NAME=pa_line_test$/gm) || []).length, 4);
+  assert.equal((g.match(/^EXCLUDE_OBJECT_END NAME=pa_line_test$/gm) || []).length, 4);
+  assert.ok(!/EXCLUDE_OBJECT/.test(generate({ ...v, label_object: false }, null).gcode));
+});
+
 t('fast speed is capped by max flow', () => {
   const v = { ...defaults().values, fast_speed: 400, max_flow: 12 };
   const d = derived(v);

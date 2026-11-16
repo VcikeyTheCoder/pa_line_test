@@ -238,6 +238,15 @@ export function generate(v, cfgVars) {
   w.out(`; size ${f3(L.x1 - L.x0)} x ${f3(L.y1 - L.y0)} mm, center ${f3(v.center_x)}, ${f3(v.center_y)}`);
   w.out('');
 
+  // one object around the whole test, so Klipper's adaptive mesh (ADAPTIVE=1, KAMP)
+  // probes only this area. Written before the start G-code, like Orca does
+  const OBJ = 'pa_line_test';
+  if (v.label_object) {
+    const [ax, ay] = place.min, [bx, by] = place.max;
+    const poly = [[ax, ay], [bx, ay], [bx, by], [ax, by], [ax, ay]].map(([x, y]) => `[${f3(x)},${f3(y)}]`).join(',');
+    w.out(`EXCLUDE_OBJECT_DEFINE NAME=${OBJ} CENTER=${f3((ax + bx) / 2)},${f3((ay + by) / 2)} POLYGON=[${poly}]`);
+  }
+
   // temperatures, if the start G-code doesn't set them (like the slicers do)
   const sg = v.start_gcode || '';
   const nozzleDone = /\bM10[49]\b/i.test(start.text) || /first_layer_temperature|nozzle_temperature/.test(sg);
@@ -277,6 +286,7 @@ export function generate(v, cfgVars) {
     if (layer === Math.max(1, Math.round(v.fan_off_layers) + 1))
       w.out(v.fan_speed > 0 ? `M106 S${Math.round(Math.min(100, v.fan_speed) * 2.55)}` : 'M107');
     w.setAccel(first ? v.first_layer_accel : v.print_accel);
+    if (v.label_object) w.out(`EXCLUDE_OBJECT_START NAME=${OBJ}`);
 
     if (layer <= 3) {
       const wallSpeed = first ? v.first_layer_speed : v.wall_speed;
@@ -357,6 +367,7 @@ export function generate(v, cfgVars) {
         });
       }
     }
+    if (v.label_object) w.out(`EXCLUDE_OBJECT_END NAME=${OBJ}`);
   }
   w.retract();
   w.out(`G1 Z${f3(z + 5)} F600`);

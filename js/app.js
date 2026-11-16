@@ -21,6 +21,15 @@ function buildForm() {
     box.className = 'fields';
     for (const f of FIELDS.filter((x) => x.g === g)) {
       const row = document.createElement('div');
+      if (f.type === 'bool') {
+        row.className = 'field check';
+        row.innerHTML = `<label for="f_${f.id}"><input type="checkbox" id="f_${f.id}"> ${f.label}</label>`;
+        box.appendChild(row);
+        row.querySelector('input').addEventListener('change', (e) => {
+          state.values[f.id] = e.target.checked; state.source[f.id] = 'edited'; schedule();
+        });
+        continue;
+      }
       row.className = 'field';
       row.innerHTML = `<label for="f_${f.id}">${f.label}</label>
         <span class="input" id="w_${f.id}"><input type="number" id="f_${f.id}" step="${f.step}" inputmode="decimal">${f.unit ? `<span class="unit">${f.unit}</span>` : ''}</span>`;
@@ -67,6 +76,7 @@ function tag(id) {
 function fillForm() {
   for (const f of FIELDS) {
     const v = state.values[f.id];
+    if (f.type === 'bool') { $('f_' + f.id).checked = !!v; continue; }
     $('f_' + f.id).value = v === null || v === undefined ? '' : +(+v).toFixed(4);
     tag(f.id);
   }
