@@ -63,12 +63,11 @@ export class Preview {
     this.bedGroup = new THREE.Group(); this.scene.add(this.bedGroup);
     this.maxLayer = 99;
     new ResizeObserver(() => this.resize()).observe(el);
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { this.theme(); this.render(); });
     this.theme();
     this.resize();
   }
   theme() {
-    const dark = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light';
+    const dark = document.documentElement.dataset.theme === 'dark';
     this.dark = dark;
     this.scene.background = new THREE.Color(cssVar('--field') || (dark ? '#191c1f' : '#f8f9fa'));
     if (this.bed) this.setBed(this.bed);

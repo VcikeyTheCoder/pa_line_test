@@ -9,6 +9,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
+<script>
+  // light unless dark was picked before (kept only in this browser)
+  try { if (localStorage.getItem('theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
+</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232c6a9a'/%3E%3Cpath d='M6 10h20M6 16h20M6 22h20' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
 <script type="importmap">
 { "imports": {
@@ -25,6 +29,7 @@
     <p>Push / pull pressure advance test for Klipper. Everything runs in your browser, your files are not uploaded anywhere.</p>
   </div>
   <nav>
+    <button type="button" class="theme" id="theme" aria-label="Switch to dark mode"></button>
     <a href="https://github.com/VcikeyTheCoder/dual_pa" target="_blank" rel="noopener">dual_pa</a>
     <a href="https://github.com/VcikeyTheCoder/pa_line_test/wiki" target="_blank" rel="noopener">Wiki</a>
     <a href="https://github.com/VcikeyTheCoder/pa_line_test" target="_blank" rel="noopener">GitHub</a>

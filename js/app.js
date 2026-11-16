@@ -194,8 +194,28 @@ function download() {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
+// ---------- light / dark switch (light by default)
+const SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+function showTheme() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  const b = $('theme');
+  b.innerHTML = dark ? SUN + 'Light' : MOON + 'Dark';
+  b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+}
+function toggleTheme() {
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  if (dark) document.documentElement.dataset.theme = 'dark';
+  else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch (e) {}
+  showTheme();
+  if (preview) { preview.theme(); preview.render(); }
+}
+
 // ---------- wiring
 function init() {
+  showTheme();
+  $('theme').addEventListener('click', toggleTheme);
   buildForm();
   const drop = $('drop'), input = $('file');
   input.addEventListener('change', () => input.files[0] && loadFile(input.files[0]));
