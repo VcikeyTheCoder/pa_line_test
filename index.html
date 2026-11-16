@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PA Line Test</title>
+<meta name="description" content="Push / pull pressure advance line test for Klipper. Made from your Orca 3mf or G-code, in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232c6a9a'/%3E%3Cpath d='M6 10h20M6 16h20M6 22h20' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "fflate": "https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js"
+} }
+</script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>PA Line Test</h1>
+    <p>Push / pull pressure advance test for Klipper. Everything runs in your browser, your files are not uploaded anywhere.</p>
+  </div>
+  <nav>
+    <a href="https://github.com/VcikeyTheCoder/pa_line_test/wiki" target="_blank" rel="noopener">Wiki</a>
+    <a href="https://github.com/VcikeyTheCoder/pa_line_test" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+</header>
+
+<main class="layout">
+  <aside class="settings" aria-label="Settings">
+    <section class="load">
+      <h2>1. Your settings</h2>
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept=".3mf,.gcode,.gco,.g" hidden>
+        <strong>Drop an Orca .3mf or .gcode here</strong>
+        <span>or click to pick one. Slice anything with the printer, filament and process you want to test.</span>
+      </label>
+      <div class="loaded" id="loaded" hidden></div>
+      <div class="load-actions">
+        <button type="button" id="reset" class="quiet" disabled>Back to file values</button>
+        <button type="button" id="manual" class="quiet">Start from defaults</button>
+      </div>
+      <p class="legend"><span class="tag file"></span>from your file <span class="tag edited"></span>changed by you</p>
+    </section>
+    <form id="form" autocomplete="off"></form>
+  </aside>
+
+  <section class="output" aria-label="Preview">
+    <div class="card preview-card">
+      <div class="preview-bar">
+        <h2>2. Preview</h2>
+        <div class="views" role="group" aria-label="Camera">
+          <button type="button" data-view="angle" class="on">Angle</button>
+          <button type="button" data-view="top">Top</button>
+          <button type="button" data-view="left">Push end</button>
+          <button type="button" data-view="right">Pull end</button>
+        </div>
+      </div>
+      <div class="canvas-wrap" id="view"><div class="empty" id="empty">Load a file or start from defaults</div></div>
+      <div class="preview-foot">
+        <label class="layer">Layers <input type="range" id="layer" min="1" max="4" value="4"> <output id="layerOut">4 / 4</output></label>
+        <ul class="key" id="key"></ul>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h2>3. Checks</h2>
+        <ul class="checks" id="checks"><li class="info">Waiting for settings.</li></ul>
+      </div>
+      <div class="card summary">
+        <h2>4. Print it</h2>
+        <dl id="summary"></dl>
+        <button type="button" id="download" class="primary" disabled>Download G-code</button>
+        <p class="small" id="dlnote"></p>
+      </div>
+    </div>
+
+    <details class="card read">
+      <summary><h2>How to read the print</h2></summary>
+      <p>Each bar is printed slow, then fast, then slow, at the PA value printed next to it. Look at the top layer under a light from the side.</p>
+      <ul>
+        <li><b>Left end, where it speeds up: push.</b> PA too low shows a thin spot right after the change, too high shows a bump. Pick the bar that stays even.</li>
+        <li><b>Right end, where it slows down: pull.</b> PA too low shows a bulge just before the change, too high shows a thin spot. Pick the bar that stays even.</li>
+      </ul>
+      <p>Push and pull can come from different bars. Put them in <code>[dual_pa]</code> as <code>push_pressure_advance</code> and <code>pull_pressure_advance</code>. If they are the same, just use that as your normal pressure advance.</p>
+    </details>
+  </section>
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
