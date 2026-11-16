@@ -88,19 +88,19 @@ t('fast speed is capped by max flow', () => {
   const v = { ...defaults().values, fast_speed: 400, max_flow: 12 };
   const d = derived(v);
   assert.ok(Math.abs(d.fast * d.area - 12) < 1e-9);
-  assert.ok(check(v, generate(v, null)).some((c) => /needs .* mm³\/s/.test(c.text)));
+  assert.ok(check(v, generate(v, null)).some((c) => /limited to .* by max volumetric speed/.test(c.text)));
 });
 
 t('checks', () => {
   const base = defaults().values;
   const has = (v, re) => check(v, generate(v, null)).some((c) => re.test(c.text));
-  assert.ok(has({ ...base, center_x: 20 }, /off the bed/));
-  assert.ok(has({ ...base, flavor: 'marlin' }, /Klipper commands/));
-  assert.ok(has({ ...base, test_accel: 300 }, /never gets to/));
-  assert.ok(has({ ...base, start_gcode: 'M117 hi' }, /no G28/));
-  assert.ok(has({ ...base, start_gcode: 'PRINT_START T={unknown_thing}' }, /can't fill: unknown_thing/));
-  assert.ok(has({ ...base, filament_type: 'PLA', nozzle_temp_first: 260 }, /outside the usual/));
-  assert.ok(!has({ ...base, start_gcode: 'PRINT_START' }, /no G28/));
+  assert.ok(has({ ...base, center_x: 20 }, /outside the printable area/));
+  assert.ok(has({ ...base, flavor: 'marlin' }, /requires Klipper/));
+  assert.ok(has({ ...base, test_accel: 300 }, /Fast speed not reached/));
+  assert.ok(has({ ...base, start_gcode: 'M117 hi' }, /no G28 or start macro/));
+  assert.ok(has({ ...base, start_gcode: 'PRINT_START T={unknown_thing}' }, /unknown placeholder: unknown_thing/));
+  assert.ok(has({ ...base, filament_type: 'PLA', nozzle_temp_first: 260 }, /outside the typical/));
+  assert.ok(!has({ ...base, start_gcode: 'PRINT_START' }, /no G28 or start macro/));
 });
 
 console.log(`\n${n} tests passed`);

@@ -20,8 +20,7 @@ if you want both values.
 2. Drop it on the page. It reads speeds, acceleration, flow ratio, max
    volumetric speed, temps, retraction, bed size and your start G-code.
 3. Change anything you want. Fields from your file have a blue edge, the ones
-   you changed have an orange one. No file? Use "Start from defaults" and fill
-   it in.
+   you changed have an orange one. No file? Use "Use defaults" and fill it in.
 4. Check the preview and the checks, then download the G-code and print it.
 
 Everything runs in your browser. Your files are not uploaded and nothing is

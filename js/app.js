@@ -35,7 +35,7 @@ function buildForm() {
       });
     }
     if (g === 'speed') box.insertAdjacentHTML('beforeend', '<p class="derived" id="derived"></p>');
-    if (g === 'test') box.insertAdjacentHTML('beforeend', '<p class="hint">Left end of each bar is push, right end is pull.</p>');
+    if (g === 'test') box.insertAdjacentHTML('beforeend', '<p class="hint">Left end of each bar: push. Right end: pull.</p>');
     det.appendChild(box); fs.appendChild(det); form.appendChild(fs);
   }
   // start / end G-code
@@ -43,11 +43,11 @@ function buildForm() {
   fs.innerHTML = `<details><summary>Start and end G-code</summary><div class="fields">
     <div class="gc-label"><label for="f_start_gcode">Start G-code</label></div>
     <textarea id="f_start_gcode" spellcheck="false"></textarea>
-    <details class="filled"><summary>What gets sent</summary><pre id="startFilled"></pre></details>
+    <details class="filled"><summary>Output</summary><pre id="startFilled"></pre></details>
     <div class="gc-label"><label for="f_end_gcode">End G-code</label></div>
     <textarea id="f_end_gcode" spellcheck="false"></textarea>
-    <details class="filled"><summary>What gets sent</summary><pre id="endFilled"></pre></details>
-    <p class="hint">Placeholders like {first_layer_temperature[0]} or [bed_temperature_initial_layer_single] are filled in from the settings above.</p>
+    <details class="filled"><summary>Output</summary><pre id="endFilled"></pre></details>
+    <p class="hint">Placeholders such as {first_layer_temperature[0]} and [bed_temperature_initial_layer_single] are replaced with the values above.</p>
   </div></details>`;
   form.appendChild(fs);
   for (const k of ['start_gcode', 'end_gcode']) {
@@ -84,12 +84,12 @@ async function loadFile(file) {
       kind = '3mf';
       const files = unzipSync(buf, { filter: (f) => /project_settings\.config$/i.test(f.name) });
       const key = Object.keys(files)[0];
-      if (!key) throw new Error('No settings in this 3mf. Save it as a project from Orca (File > Save project), not "Export plain 3mf".');
+      if (!key) throw new Error('No project settings found in 3mf. Use File > Save project in OrcaSlicer. Plain 3mf exports contain no settings.');
       cfg = readProjectConfig(strFromU8(files[key]));
     } else {
       kind = 'G-code';
       cfg = readGcodeConfig(strFromU8(buf));
-      if (!cfg) throw new Error('No settings block in this G-code. Only G-code from Orca or Bambu Studio has one.');
+      if (!cfg) throw new Error('No settings found in G-code. Only G-code exported from OrcaSlicer or Bambu Studio is supported.');
     }
     const s = fromConfig(cfg);
     state.values = s.values; state.source = s.source;
@@ -100,7 +100,7 @@ async function loadFile(file) {
     box.innerHTML = `<b>${esc(file.name)}</b><br>` +
       [names.printer && `Printer: ${esc(names.printer)}`, names.filament && `Filament: ${esc(names.filament)}`, names.process && `Process: ${esc(names.process)}`]
         .filter(Boolean).join('<br>') +
-      `<br>${found} settings read from the ${kind}.`;
+      `<br>${found} settings loaded from ${kind}.`;
     state.name = 'pa_line_test_' + (s.values.filament_type || 'test').replace(/[^a-z0-9]+/gi, '_');
     $('reset').disabled = false;
     fillForm(); run();
@@ -115,7 +115,7 @@ function startDefaults() {
   state.values = s.values; state.source = s.source; state.cfgVars = null; state.fileValues = null;
   state.name = 'pa_line_test';
   $('loaded').hidden = false; $('loaded').className = 'loaded';
-  $('loaded').innerHTML = 'Using defaults. Fill in your printer and filament below.';
+  $('loaded').innerHTML = 'Default settings loaded. Set printer and filament values below.';
   $('reset').disabled = true;
   fillForm(); run();
 }
@@ -137,7 +137,7 @@ function run() {
   showDerived(v);
   const blocked = checks.some((c) => c.level === 'error');
   $('download').disabled = !gen;
-  $('dlnote').textContent = blocked ? 'There are errors above. You can still download, but fix them first.' : '';
+  $('dlnote').textContent = blocked ? 'Resolve the errors before printing.' : '';
   if (!gen) return;
   $('startFilled').textContent = gen.start.text;
   $('endFilled').textContent = gen.end.text;
@@ -156,12 +156,12 @@ function run() {
 function showDerived(v) {
   const d = derived(v), el = $('derived');
   if (!el) return;
-  el.innerHTML = `Fast speed used: <b>${+d.fast.toFixed(1)} mm/s</b> (${+d.fastFlow.toFixed(1)} mm³/s${d.fastCapped ? ', capped' : ''}).<br>` +
-    `Acceleration used: <b>${Math.round(d.accel)} mm/s²</b>${d.accelCapped ? ' (capped)' : ''}, speed-up takes ${+d.rampDist.toFixed(1)} mm.`;
+  el.innerHTML = `Fast speed: <b>${+d.fast.toFixed(1)} mm/s</b> (${+d.fastFlow.toFixed(1)} mm³/s${d.fastCapped ? ', limited' : ''})<br>` +
+    `Acceleration: <b>${Math.round(d.accel)} mm/s²</b>${d.accelCapped ? ' (limited)' : ''}<br>Acceleration distance: ${+d.rampDist.toFixed(1)} mm`;
 }
 
 function showChecks(list) {
-  const word = { error: 'Error', warn: 'Check', info: 'Note' };
+  const word = { error: 'Error', warn: 'Warning', info: 'Info' };
   const order = { error: 0, warn: 1, info: 2 };
   $('checks').innerHTML = list.slice().sort((a, b) => order[a.level] - order[b.level])
     .map((c) => `<li class="${c.level}"><b>${word[c.level]}:</b>${esc(c.text)}</li>`).join('');
@@ -171,7 +171,7 @@ let lastView = 'angle';
 function showPreview(gen, v) {
   if (!preview) {
     try { preview = new Preview($('view')); }
-    catch (e) { $('empty').textContent = 'The 3D preview needs WebGL, which is not available here. The G-code still works.'; return; }
+    catch (e) { $('empty').textContent = 'Preview requires WebGL, which is not available in this browser.'; return; }
   }
   $('empty').hidden = true;
   preview.setBed({ x0: v.bed_x0, y0: v.bed_y0, x1: v.bed_x1, y1: v.bed_y1 });

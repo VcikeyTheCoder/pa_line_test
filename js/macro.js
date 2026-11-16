@@ -101,7 +101,7 @@ function run(nodes, vars, unknown, errors) {
       if (n.t === 'expr') out += format(evaluate(n.e, vars));
       else if (n.t === 'legacy') out += format(legacy(n.name, vars));
       else if (n.t === 'ifchain') {
-        if (n.broken) throw new Error('{if} without {endif}');
+        if (n.broken) throw new Error('missing {endif}');
         for (const b of n.branches) {
           if (b.cond === null || truthy(evaluate(b.cond, vars))) { out += run(b.body, vars, unknown, errors); break; }
         }
@@ -169,7 +169,7 @@ function tokens(src) {
     }
     if ((m = /^[a-zA-Z_][a-zA-Z0-9_]*/.exec(src.slice(i)))) { out.push({ k: 'id', v: m[0] }); i += m[0].length; continue; }
     const op = OPS.find((o) => src.startsWith(o, i));
-    if (!op) throw new Error('can\'t read "' + src.slice(i, i + 10) + '"');
+    if (!op) throw new Error('invalid character at "' + src.slice(i, i + 10) + '"');
     out.push({ k: 'op', v: op }); i += op.length;
   }
   return out;
@@ -198,7 +198,7 @@ export function evaluate(src, vars) {
   let p = 0;
   const peek = (v) => t[p] && (t[p].v === v) && (t[p].k === 'op' || t[p].k === 'id');
   const take = (v) => { if (peek(v)) { p++; return true; } return false; };
-  const need = (v) => { if (!take(v)) throw new Error('expected ' + v); };
+  const need = (v) => { if (!take(v)) throw new Error('expected "' + v + '"'); };
 
   function ternary() {
     const c = or();
@@ -252,7 +252,7 @@ export function evaluate(src, vars) {
   }
   function primary() {
     const k = t[p];
-    if (!k) throw new Error('unexpected end');
+    if (!k) throw new Error('unexpected end of expression');
     p++;
     if (k.k === 'n' || k.k === 's') return k.v;
     if (k.k === 'op' && k.v === '(') { const v = ternary(); need(')'); return v; }
@@ -268,9 +268,9 @@ export function evaluate(src, vars) {
       if (k.v in vars) return vars[k.v];
       throw new Unknown(k.v);
     }
-    throw new Error('unexpected ' + k.v);
+    throw new Error('unexpected "' + k.v + '"');
   }
   const v = ternary();
-  if (p < t.length) throw new Error('unexpected ' + t[p].v);
+  if (p < t.length) throw new Error('unexpected "' + t[p].v + '"');
   return v;
 }
